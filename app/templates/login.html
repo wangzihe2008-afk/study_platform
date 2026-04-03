@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card" style="max-width: 460px; margin: 40px auto;">
+    <h2>登录</h2>
+    <form method="post">
+        <label>邮箱</label>
+        <input name="email" type="email" required>
+        <label>密码</label>
+        <input name="password" type="password" required>
+        <button type="submit">登录</button>
+    </form>
+    <p class="muted">没有账号？ <a href="{{ url_for('main.register') }}">去注册</a></p>
+</div>
+{% endblock %}

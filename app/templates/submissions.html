@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card">
+    <h2>练习记录</h2>
+    {% if submissions %}
+        <table>
+            <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>题目</th>
+                    <th>上传答案</th>
+                    <th>得分</th>
+                    <th>标准答案</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in submissions %}
+                <tr>
+                    <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{{ s.exercise.title }}</td>
+                    <td><pre>{{ s.uploaded_answer_text or '已上传文件/未填写文字答案' }}</pre></td>
+                    <td><pre>{{ s.score }}
+{{ s.feedback }}</pre></td>
+                    <td><pre>{{ s.standard_answer_snapshot }}</pre></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>还没有练习记录。</p>
+    {% endif %}
+</div>
+{% endblock %}

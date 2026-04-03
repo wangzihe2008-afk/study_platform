@@ -1,0 +1,277 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card">
+    <h2>筛选知识点</h2>
+    <div class="row">
+        <div class="col">
+            <label>国家</label>
+            <select id="country">
+                <option value="">请选择国家</option>
+                {% for c in countries %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col">
+            <label>省份</label>
+            <select id="province">
+                <option value="">请选择省份</option>
+                {% for p in provinces %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col">
+            <label>年级</label>
+            <select id="grade">
+                <option value="">请选择年级</option>
+                {% for g in grades %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col">
+            <label>学科</label>
+            <div>
+                <label><input type="radio" name="subject" value="Math"> 数学</label>
+                <label><input type="radio" name="subject" value="Physics"> 物理</label>
+                <label><input type="radio" name="subject" value="Chemistry"> 化学</label>
+            </div>
+        </div>
+        <div class="col" style="display:flex;align-items:flex-end;">
+            <button onclick="loadTopics()">查询知识点</button>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>知识点列表</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>知识点</th>
+                <th>要求</th>
+                <th>详细讲解</th>
+                <th>例题</th>
+                <th>练习题</th>
+            </tr>
+        </thead>
+        <tbody id="topicTableBody">
+            <tr><td colspan="5" class="muted">请先筛选条件并点击查询。</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<div id="detailArea" class="card" style="display:none;">
+    <h2 id="detailTitle">详情</h2>
+    <div id="detailContent"></div>
+</div>
+
+<script>
+let currentTopics = [];
+
+function getSelectedSubject() {
+    const selected = document.querySelector('input[name="subject"]:checked');
+    return selected ? selected.value : '';
+}
+
+async function loadTopics() {
+    const params = new URLSearchParams({
+        country: document.getElementById('country').value,
+        province: document.getElementById('province').value,
+        grade: document.getElementById('grade').value,
+        subject: getSelectedSubject()
+    });
+
+    const res = await fetch(`/api/topics?${params.toString()}`);
+    const data = await res.json();
+    currentTopics = data;
+    const body = document.getElementById('topicTableBody');
+
+    if (!data.length) {
+        body.innerHTML = '<tr><td colspan="5">没有找到符合条件的知识点。</td></tr>';
+        return;
+    }
+
+    body.innerHTML = data.map(t => `
+        <tr>
+            <td>${t.knowledge_point}</td>
+            <td><button class="small-btn" onclick="showRequirement(${t.id})">要求</button></td>
+            <td><button class="small-btn" onclick="showExplanation(${t.id})">详细讲解</button></td>
+            <td><button class="small-btn" onclick="showExampleOptions(${t.id}, '${t.knowledge_point.replace(/'/g, "&#39;")}')">例题</button></td>
+            <td><button class="small-btn" onclick="showExerciseOptions(${t.id}, '${t.knowledge_point.replace(/'/g, "&#39;")}')">练习题</button></td>
+        </tr>
+    `).join('');
+}
+
+function openDetail(title, html) {
+    document.getElementById('detailArea').style.display = 'block';
+    document.getElementById('detailTitle').innerText = title;
+    document.getElementById('detailContent').innerHTML = html;
+}
+
+function findTopic(topicId) {
+    return currentTopics.find(t => t.id === topicId);
+}
+
+function showRequirement(topicId) {
+    const t = findTopic(topicId);
+    openDetail('大纲要求', `<pre>${t.requirement}</pre>`);
+}
+
+function showExplanation(topicId) {
+    const t = findTopic(topicId);
+    openDetail('详细讲解', `<pre>${t.explanation}</pre>`);
+}
+
+function showExampleOptions(topicId, topicName) {
+    openDetail(`例题设置 - ${topicName}`, `
+        <div class="modal">
+            <label>选择难度</label>
+            <select id="exampleDifficulty">
+                <option value="一般">一般</option>
+                <option value="较难">较难</option>
+                <option value="超难">超难</option>
+            </select>
+            <button onclick="loadExamples(${topicId})">显示例题列表</button>
+        </div>
+    `);
+}
+
+async function loadExamples(topicId) {
+    const difficulty = document.getElementById('exampleDifficulty').value;
+    const res = await fetch(`/api/topic/${topicId}/examples?difficulty=${encodeURIComponent(difficulty)}`);
+    const data = await res.json();
+    if (!data.length) {
+        openDetail('例题列表', '<p>当前难度下没有例题。</p>');
+        return;
+    }
+    openDetail('例题列表', data.map(i => `
+        <div class="modal">
+            <strong>${i.title}</strong>（${i.difficulty}）
+            <p>${i.question}</p>
+            <button class="small-btn" onclick="showExampleDetail(${i.id})">查看详解</button>
+        </div>
+    `).join(''));
+}
+
+async function showExampleDetail(exampleId) {
+    const res = await fetch(`/api/example/${exampleId}`);
+    const data = await res.json();
+    openDetail('例题详解', `
+        <div class="modal">
+            <h3>${data.title}</h3>
+            <p><strong>题目：</strong>${data.question}</p>
+            <p><strong>解题过程：</strong></p>
+            <pre>${data.solution}</pre>
+            <p><strong>考点提示 / 要点说明：</strong></p>
+            <pre>${data.exam_tips}</pre>
+            <label>比较国家</label>
+            <select id="compareCountry">
+                <option value="Canada">Canada</option>
+                <option value="China">China</option>
+                <option value="USA">USA</option>
+                <option value="UK">UK</option>
+            </select>
+            <button class="small-btn" onclick="compareExample(${exampleId})">比较</button>
+            <div id="compareResult"></div>
+        </div>
+    `);
+}
+
+async function compareExample(exampleId) {
+    const country = document.getElementById('compareCountry').value;
+    const res = await fetch(`/api/example/${exampleId}/compare?country=${encodeURIComponent(country)}`);
+    const data = await res.json();
+    document.getElementById('compareResult').innerHTML = `
+        <hr>
+        <p><strong>${data.country} 标准详解</strong></p>
+        <pre>${data.solution}</pre>
+        <pre>${data.exam_tips}</pre>
+    `;
+}
+
+function showExerciseOptions(topicId, topicName) {
+    openDetail(`练习题设置 - ${topicName}`, `
+        <div class="modal">
+            <label>选择难度</label>
+            <select id="exerciseDifficulty">
+                <option value="一般">一般</option>
+                <option value="较难">较难</option>
+                <option value="超难">超难</option>
+            </select>
+            <label>题目数量</label>
+            <input id="exerciseLimit" type="number" value="2" min="1" max="20">
+            <button onclick="loadExercises(${topicId})">显示练习题列表</button>
+        </div>
+    `);
+}
+
+async function loadExercises(topicId) {
+    const difficulty = document.getElementById('exerciseDifficulty').value;
+    const limit = document.getElementById('exerciseLimit').value;
+    const res = await fetch(`/api/topic/${topicId}/exercises?difficulty=${encodeURIComponent(difficulty)}&limit=${limit}`);
+    const data = await res.json();
+    if (!data.length) {
+        openDetail('练习题列表', '<p>当前条件下没有练习题。</p>');
+        return;
+    }
+    openDetail('练习题列表', data.map(i => `
+        <div class="modal">
+            <strong>${i.title}</strong>（${i.difficulty}）
+            <p>${i.question}</p>
+            <button class="small-btn" onclick="showExerciseDetail(${i.id})">打开题目</button>
+        </div>
+    `).join(''));
+}
+
+async function showExerciseDetail(exerciseId) {
+    const res = await fetch(`/api/exercise/${exerciseId}`);
+    const data = await res.json();
+    openDetail('练习题作答', `
+        <div class="modal">
+            <h3>${data.title}</h3>
+            <p><strong>题目：</strong>${data.question}</p>
+            <label>输入你的答案</label>
+            <textarea id="answerText" rows="8" placeholder="建议输入文字答案，评分更准确"></textarea>
+            <label>上传答案文件（可选）</label>
+            <input id="answerFile" type="file">
+            <button onclick="submitExercise(${exerciseId})">提交答案</button>
+            <button class="secondary" onclick="loadStandardAnswer(${exerciseId})">标准答案</button>
+            <div id="exerciseResult"></div>
+        </div>
+    `);
+}
+
+async function submitExercise(exerciseId) {
+    const fd = new FormData();
+    fd.append('answer_text', document.getElementById('answerText').value);
+    const fileInput = document.getElementById('answerFile');
+    if (fileInput.files[0]) {
+        fd.append('answer_file', fileInput.files[0]);
+    }
+
+    const res = await fetch(`/api/exercise/${exerciseId}/submit`, {
+        method: 'POST',
+        body: fd
+    });
+    const data = await res.json();
+    document.getElementById('exerciseResult').innerHTML = `
+        <hr>
+        <p><strong>得分：</strong>${data.score}</p>
+        <p><strong>扣分点 / 反馈：</strong></p>
+        <pre>${data.feedback}</pre>
+        <button class="small-btn" onclick="loadStandardAnswer(${exerciseId})">查看标准答案</button>
+    `;
+}
+
+async function loadStandardAnswer(exerciseId) {
+    const res = await fetch(`/api/exercise/${exerciseId}/standard-answer`);
+    const data = await res.json();
+    const target = document.getElementById('exerciseResult');
+    target.innerHTML += `
+        <hr>
+        <p><strong>标准答案：</strong></p>
+        <pre>${data.standard_answer}</pre>
+        <p><strong>评分点：</strong></p>
+        <pre>${data.marking_points}</pre>
+    `;
+}
+</script>
+{% endblock %}
