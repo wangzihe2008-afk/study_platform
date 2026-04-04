@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Open Trivia DB 数学题</h2>
+
+<form method="post">
+    <div>
+        <label>题目数量：</label>
+        <select name="amount">
+            <option value="5">5</option>
+            <option value="10">10</option>
+        </select>
+    </div>
+
+    <div>
+        <label>难度：</label>
+        <select name="difficulty">
+            <option value="">任意</option>
+            <option value="easy">简单</option>
+            <option value="medium">中等</option>
+            <option value="hard">困难</option>
+        </select>
+    </div>
+
+    <div>
+        <label>题型：</label>
+        <select name="qtype">
+            <option value="">任意</option>
+            <option value="multiple">选择题</option>
+            <option value="boolean">判断题</option>
+        </select>
+    </div>
+
+    <button type="submit">开始做题</button>
+</form>
+{% endblock %}

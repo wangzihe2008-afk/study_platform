@@ -1,9 +1,24 @@
 import os
 import uuid
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
+import html
+import random
+import requests
+
+from flask import (
+    Blueprint,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    jsonify,
+    current_app,
+    session,
+)
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 from sqlalchemy import select
+
 from . import db
 from .models import User, Topic, ExampleQuestion, ExerciseQuestion, PracticeSubmission
 from .seed import seed_data
@@ -47,6 +62,48 @@ def simple_score(user_answer: str, standard_answer: str, marking_points: str):
         feedback.append('建议补充公式、步骤、单位或最终结论。')
 
     return score, '\n'.join(feedback)
+
+
+def fetch_trivia_questions(amount=5, difficulty="", qtype="multiple", category="19"):
+    url = "https://opentdb.com/api.php"
+
+    attempts = [
+        {"amount": amount, "category": category, "difficulty": difficulty, "type": qtype},
+        {"amount": amount, "category": category, "type": qtype},
+        {"amount": amount, "category": category},
+        {"amount": amount},
+    ]
+
+    for params in attempts:
+        clean_params = {k: v for k, v in params.items() if v}
+        try:
+            resp = requests.get(url, params=clean_params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            print("DEBUG params =", clean_params)
+            print("DEBUG response_code =", data.get("response_code"))
+
+            if data.get("response_code") == 0 and data.get("results"):
+                questions = []
+                for item in data["results"]:
+                    correct = html.unescape(item["correct_answer"])
+                    incorrect = [html.unescape(x) for x in item["incorrect_answers"]]
+                    choices = incorrect + [correct]
+                    random.shuffle(choices)
+
+                    questions.append({
+                        "question": html.unescape(item["question"]),
+                        "correct_answer": correct,
+                        "choices": choices,
+                        "difficulty": item.get("difficulty", ""),
+                        "type": item.get("type", ""),
+                        "category": item.get("category", "")
+                    })
+                return questions
+        except Exception as e:
+            print("DEBUG fetch error =", e)
+
+    return []
 
 
 @main.route('/')
@@ -295,3 +352,67 @@ def api_submit_exercise(exercise_id):
 def submissions():
     items = PracticeSubmission.query.filter_by(user_id=current_user.id).order_by(PracticeSubmission.created_at.desc()).all()
     return render_template('submissions.html', submissions=items)
+
+
+@main.route('/trivia', methods=['GET', 'POST'])
+@login_required
+def trivia():
+    if request.method == 'POST':
+        amount = int(request.form.get('amount', 5))
+        difficulty = request.form.get('difficulty', '')
+        qtype = request.form.get('qtype', 'multiple')
+
+        questions = fetch_trivia_questions(
+            amount=amount,
+            difficulty=difficulty,
+            qtype=qtype,
+            category='19'
+        )
+
+        if not questions:
+            flash('没有拿到题目，请换个难度或题型再试。', 'danger')
+            return redirect(url_for('main.trivia'))
+
+        session['trivia_questions'] = questions
+        print("DEBUG len(questions) =", len(questions))
+        return render_template('trivia_quiz.html', questions=questions)
+
+    return render_template('trivia_form.html')
+
+
+
+@main.route('/trivia/submit', methods=['POST'])
+@login_required
+def trivia_submit():
+    questions = session.get('trivia_questions', [])
+    if not questions:
+        flash('题目已失效，请重新开始。', 'danger')
+        return redirect(url_for('main.trivia'))
+
+    score = 0
+    results = []
+
+    for i, q in enumerate(questions):
+        user_answer = request.form.get(f'q{i}', '')
+        is_correct = user_answer == q['correct_answer']
+
+        if is_correct:
+            score += 1
+
+        results.append({
+            'question': q['question'],
+            'choices': q['choices'],
+            'correct_answer': q['correct_answer'],
+            'user_answer': user_answer,
+            'is_correct': is_correct
+        })
+
+    percent = round(score / len(questions) * 100, 1) if questions else 0
+
+    return render_template(
+        'trivia_result.html',
+        results=results,
+        score=score,
+        total=len(questions),
+        percent=percent
+    )
