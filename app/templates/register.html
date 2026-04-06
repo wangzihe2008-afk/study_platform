@@ -1,18 +1,24 @@
-{% extends 'base.html' %}
-{% block content %}
-<div class="card" style="max-width: 520px; margin: 40px auto;">
-    <h2>注册</h2>
-    <form method="post">
-        <label>姓</label>
-        <input name="last_name" required>
-        <label>名</label>
-        <input name="first_name" required>
-        <label>邮箱</label>
-        <input name="email" type="email" required>
-        <label>密码</label>
-        <input name="password" type="password" required>
-        <button type="submit">注册</button>
-    </form>
-    <p class="muted">已有账号？ <a href="{{ url_for('main.login') }}">去登录</a></p>
-</div>
-{% endblock %}
+<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><title>注册</title><style>
+body{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#1f2937}
+nav{background:#184a78;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+nav a{color:#fff;text-decoration:none;margin-left:16px;font-weight:600}
+.container{max-width:1180px;margin:24px auto;padding:0 12px}
+.card{background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:20px;margin-bottom:18px}
+.grid3{display:grid;grid-template-columns:2fr 2fr 1.2fr;gap:12px}
+.grid4{display:grid;grid-template-columns:1.3fr 1.3fr 0.8fr 1fr;gap:12px}
+select,button,input,textarea{padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;font-size:14px;box-sizing:border-box}
+button{background:#1f5c93;color:#fff;border:none;cursor:pointer}
+button.secondary{background:#eef6ff;color:#1f5c93;border:1px solid #bfd4ea}
+table{width:100%;border-collapse:collapse}
+th,td{padding:12px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top;text-align:left}
+th{background:#f8fafc}
+.panel{background:#f8fbff;border:1px solid #d9e5f3;border-radius:12px;padding:14px;line-height:1.7;white-space:pre-wrap}
+.small{color:#64748b;font-size:13px}
+.req-item{margin:6px 0}
+.msg{margin:10px 0;padding:10px;background:#f5f8ff;border-radius:10px}
+.pill{display:inline-block;background:#eef6ff;color:#1f5c93;border:1px solid #cfe2f5;padding:4px 10px;border-radius:999px;font-size:12px}
+.hero{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.wrap{max-width:430px;margin:70px auto;background:white;padding:24px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.answer{display:block;margin:10px 0;padding:12px;border:1px solid #dbe4ef;border-radius:12px;background:#fff}
+.ok{color:#15803d;font-weight:700}.bad{color:#b91c1c;font-weight:700}
+</style></head><body><div class="wrap"><h2 style="margin-top:0">注册</h2>{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for category, message in messages %}<div class='msg'>{{ message }}</div>{% endfor %}{% endif %}{% endwith %}<form method='post'><input type='text' name='last_name' placeholder='姓' required><input type='text' name='first_name' placeholder='名' required><input type='email' name='email' placeholder='邮箱' required><input type='password' name='password' placeholder='密码' required><button type='submit'>注册</button></form><p>已有账号？<a href='/login'>去登录</a></p></div></body></html>

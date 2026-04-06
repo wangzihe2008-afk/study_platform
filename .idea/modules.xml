@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/study_platform.iml" filepath="$PROJECT_DIR$/.idea/study_platform.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/paddleocr_study_platform_full_free_ocr_fixed.iml" filepath="$PROJECT_DIR$/.idea/paddleocr_study_platform_full_free_ocr_fixed.iml" />
     </modules>
   </component>
 </project>

@@ -1,433 +1,249 @@
-import os
-import uuid
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, session
+import json, random, os
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session, current_app
 from flask_login import login_user, logout_user, login_required, current_user
-from werkzeug.utils import secure_filename
-from sqlalchemy import select
-from . import db
-from .models import User, Topic, ExampleQuestion, ExerciseQuestion, PracticeSubmission
-from .seed import seed_data
-from .remote_catalog import load_remote_catalog, get_filter_options, filter_catalog, get_topic
-import html
-import random
-import requests
+from .models import db, User, CurriculumUnit, QuizQuestion, QuizAttempt
+from .photo_ocr import analyze_question_page
 
-main = Blueprint('main', __name__)
+main = Blueprint("main", __name__)
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'txt', 'doc', 'docx'}
+def parse_json(text, default):
+    try:
+        return json.loads(text) if text else default
+    except Exception:
+        return default
 
+def score_written(user_answer: str, correct_answer: str, marking_points: str, max_score: float):
+    if not user_answer or not user_answer.strip():
+        return 0.0, "未作答。"
+    answer = user_answer.lower()
+    keywords = [x.strip().lower() for x in marking_points.split(",") if x.strip()]
+    matched = [kw for kw in keywords if kw in answer]
+    ratio = len(matched) / max(1, len(keywords)) if keywords else 0.5
+    score = round(max_score * max(0.3, ratio), 1)
+    feedback = f"匹配到的关键词：{', '.join(matched) if matched else '无'}\n评分参考点：{marking_points}"
+    return score, feedback
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def _queue_key(country, province, grade, subject, qtype):
+    return f"quiz_queue::{country}::{province}::{grade}::{subject}::{qtype}"
 
+def build_queue(country, province, grade, subject, qtype, preferred_unit=None):
+    items = QuizQuestion.query.filter_by(
+        country=country, province=province, grade=grade, subject=subject, question_type=qtype
+    ).all()
+    if not items:
+        return []
+    preferred = [q.id for q in items if preferred_unit and q.unit == preferred_unit]
+    others = [q.id for q in items if q.id not in preferred]
+    random.shuffle(preferred)
+    random.shuffle(others)
+    return preferred + others
 
-def simple_score(user_answer: str, standard_answer: str, marking_points: str):
-    if not user_answer:
-        return 0, '没有检测到文字答案，当前版本建议至少输入文字答案再评分。'
+@main.route("/")
+def home():
+    return redirect(url_for("main.dashboard")) if current_user.is_authenticated else redirect(url_for("main.login"))
 
-    expected_keywords = []
-    for token in standard_answer.replace(',', ' ').replace('.', ' ').split():
-        t = token.strip().lower()
-        if len(t) >= 2:
-            expected_keywords.append(t)
-    expected_keywords = list(dict.fromkeys(expected_keywords))[:8]
-
-    answer_lower = user_answer.lower()
-    hits = [kw for kw in expected_keywords if kw in answer_lower]
-    ratio = len(hits) / max(1, len(expected_keywords))
-    score = round(ratio * 100, 1)
-
-    feedback = []
-    feedback.append(f'匹配到的关键点: {", ".join(hits) if hits else "无"}')
-    missed = [kw for kw in expected_keywords if kw not in hits]
-    if missed:
-        feedback.append(f'可能缺少的关键点: {", ".join(missed[:5])}')
-    feedback.append(f'参考评分规则: {marking_points}')
-    if score >= 85:
-        feedback.append('整体完成度较好。')
-    elif score >= 60:
-        feedback.append('基础步骤有了，但还有部分关键点不完整。')
-    else:
-        feedback.append('建议补充公式、步骤、单位或最终结论。')
-
-    return score, '\n'.join(feedback)
-
-
-@main.route('/')
-def index():
-    if current_user.is_authenticated:
-        return redirect(url_for('main.dashboard'))
-    return redirect(url_for('main.login'))
-
-
-@main.route('/register', methods=['GET', 'POST'])
+@main.route("/register", methods=["GET", "POST"])
 def register():
-    if request.method == 'POST':
-        last_name = request.form.get('last_name', '').strip()
-        first_name = request.form.get('first_name', '').strip()
-        email = request.form.get('email', '').strip().lower()
-        password = request.form.get('password', '').strip()
-
+    if request.method == "POST":
+        last_name = request.form.get("last_name", "").strip()
+        first_name = request.form.get("first_name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "").strip()
         if not all([last_name, first_name, email, password]):
-            flash('请完整填写所有注册信息。', 'danger')
-            return redirect(url_for('main.register'))
-
+            flash("请完整填写所有注册信息。", "danger")
+            return redirect(url_for("main.register"))
         if User.query.filter_by(email=email).first():
-            flash('该邮箱已经注册。', 'danger')
-            return redirect(url_for('main.register'))
-
+            flash("该邮箱已经注册。", "danger")
+            return redirect(url_for("main.register"))
         user = User(last_name=last_name, first_name=first_name, email=email)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-        flash('注册成功，请登录。', 'success')
-        return redirect(url_for('main.login'))
+        flash("注册成功，请登录。", "success")
+        return redirect(url_for("main.login"))
+    return render_template("register.html")
 
-    return render_template('register.html')
-
-
-@main.route('/login', methods=['GET', 'POST'])
+@main.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == 'POST':
-        email = request.form.get('email', '').strip().lower()
-        password = request.form.get('password', '').strip()
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "").strip()
         user = User.query.filter_by(email=email).first()
         if user and user.check_password(password):
             login_user(user)
-            seed_data()
-            return redirect(url_for('main.dashboard'))
-        flash('邮箱或密码错误。', 'danger')
-    return render_template('login.html')
+            return redirect(url_for("main.dashboard"))
+        flash("邮箱或密码错误。", "danger")
+    return render_template("login.html")
 
-
-@main.route('/logout')
+@main.route("/logout")
 @login_required
 def logout():
     logout_user()
-    flash('你已退出登录。', 'success')
-    return redirect(url_for('main.login'))
+    flash("你已退出登录。", "success")
+    return redirect(url_for("main.login"))
 
-
-@main.route('/dashboard')
+@main.route("/dashboard")
 @login_required
 def dashboard():
-    catalog = load_remote_catalog()
-    options = get_filter_options(catalog)
-    return render_template(
-        'dashboard.html',
-        countries=options['countries'],
-        provinces=options['provinces'],
-        grades=options['grades'],
-        subjects=options['subjects'],
-    )
+    countries = sorted({u.country for u in CurriculumUnit.query.all()})
+    return render_template("dashboard.html", countries=countries, user=current_user)
 
-
-@main.route('/api/topics')
+@main.route("/api/provinces")
 @login_required
-def api_topics():
-    catalog = load_remote_catalog()
-    country = request.args.get('country', '')
-    province = request.args.get('province', '')
-    subject = request.args.get('subject', '')
-    grade = request.args.get('grade', '')
+def api_provinces():
+    country = request.args.get("country", "")
+    data = sorted({u.province for u in CurriculumUnit.query.filter_by(country=country).all()})
+    return jsonify(data)
 
-    topics = filter_catalog(catalog, country=country, province=province, grade=grade, subject=subject)
-    return jsonify([
-        {
-            'id': t['id'],
-            'knowledge_point': t['knowledge_point'],
-            'requirement': t['requirement'],
-            'explanation': t['explanation'],
-            'remote_source': t.get('remote_source', ''),
-        }
-        for t in topics
-    ])
-
-
-@main.route('/api/topic/<int:topic_id>/examples')
+@main.route("/api/grades")
 @login_required
-def api_examples(topic_id):
-    difficulty = request.args.get('difficulty')
-    query = ExampleQuestion.query.filter_by(topic_id=topic_id)
-    if difficulty:
-        query = query.filter_by(difficulty=difficulty)
-    items = query.all()
-    return jsonify([
-        {
-            'id': i.id,
-            'title': i.title,
-            'difficulty': i.difficulty,
-            'question': i.question,
-        }
-        for i in items
-    ])
+def api_grades():
+    country = request.args.get("country", "")
+    province = request.args.get("province", "")
+    data = sorted({u.grade for u in CurriculumUnit.query.filter_by(country=country, province=province).all()}, key=lambda x: int(x))
+    return jsonify(data)
 
-
-@main.route('/api/example/<int:example_id>')
+@main.route("/api/subjects")
 @login_required
-def api_example_detail(example_id):
-    item = db.session.get(ExampleQuestion, example_id)
-    if not item:
-        return jsonify({'error': 'Not found'}), 404
-    return jsonify({
-        'id': item.id,
-        'title': item.title,
-        'difficulty': item.difficulty,
-        'question': item.question,
-        'solution': item.solution,
-        'exam_tips': item.exam_tips,
-        'country_version': item.country_version,
+def api_subjects():
+    country = request.args.get("country", "")
+    province = request.args.get("province", "")
+    grade = request.args.get("grade", "")
+    data = sorted({u.subject for u in CurriculumUnit.query.filter_by(country=country, province=province, grade=grade).all()})
+    return jsonify(data)
+
+@main.route("/api/units")
+@login_required
+def api_units():
+    country = request.args.get("country", "")
+    province = request.args.get("province", "")
+    grade = request.args.get("grade", "")
+    subject = request.args.get("subject", "")
+    units = CurriculumUnit.query.filter_by(country=country, province=province, grade=grade, subject=subject).order_by(CurriculumUnit.id.asc()).all()
+    data = []
+    for u in units:
+        data.append({
+            "id": u.id,
+            "unit": u.unit,
+            "requirements": parse_json(u.requirements_json, []),
+            "content": u.content,
+            "resources": parse_json(u.resources_json, [])
+        })
+    return jsonify(data)
+
+@main.route("/quiz/start", methods=["POST"])
+@login_required
+def quiz_start():
+    country = request.form.get("country", "")
+    province = request.form.get("province", "")
+    grade = request.form.get("grade", "")
+    subject = request.form.get("subject", "")
+    preferred_unit = request.form.get("unit", "")
+    qtype = request.form.get("question_type", "")
+    queue = build_queue(country, province, grade, subject, qtype, preferred_unit=preferred_unit)
+    if not queue:
+        flash("没有找到对应题目。", "danger")
+        return redirect(url_for("main.dashboard"))
+    session[_queue_key(country, province, grade, subject, qtype)] = queue
+    return redirect(url_for("main.quiz_next", country=country, province=province, grade=grade, subject=subject, qtype=qtype))
+
+@main.route("/quiz/next")
+@login_required
+def quiz_next():
+    country = request.args.get("country", "")
+    province = request.args.get("province", "")
+    grade = request.args.get("grade", "")
+    subject = request.args.get("subject", "")
+    qtype = request.args.get("qtype", "")
+    key = _queue_key(country, province, grade, subject, qtype)
+    queue = session.get(key, [])
+    if not queue:
+        queue = build_queue(country, province, grade, subject, qtype)
+    if not queue:
+        flash("这个筛选条件下没有题目。", "danger")
+        return redirect(url_for("main.dashboard"))
+    qid = queue.pop(0)
+    session[key] = queue
+    session.modified = True
+    q = db.session.get(QuizQuestion, qid)
+    return render_template("quiz_one.html", q=q, filter_info={
+        "country": country, "province": province, "grade": grade, "subject": subject, "question_type": qtype
     })
 
-
-@main.route('/api/example/<int:example_id>/compare')
+@main.route("/quiz/submit_one", methods=["POST"])
 @login_required
-def api_example_compare(example_id):
-    country = request.args.get('country', 'Canada')
-    item = db.session.get(ExampleQuestion, example_id)
-    if not item:
-        return jsonify({'error': 'Not found'}), 404
+def quiz_submit_one():
+    qid = int(request.form.get("qid"))
+    q = db.session.get(QuizQuestion, qid)
+    user_answer = request.form.get("answer", "").strip()
+    country = request.form.get("country", "")
+    province = request.form.get("province", "")
+    grade = request.form.get("grade", "")
+    subject = request.form.get("subject", "")
+    qtype = request.form.get("question_type", "")
+    feedback_extra = ""
+    if q.question_type in ("multiple_choice", "true_false"):
+        is_correct = user_answer == q.correct_answer
+        score = q.score_value if is_correct else 0.0
+    else:
+        score, feedback_extra = score_written(user_answer, q.correct_answer, q.marking_points or "", q.score_value)
+        is_correct = score >= q.score_value * 0.6
 
-    compared_solution = f'[{country} 标准] ' + item.solution
-    compared_tips = f'[{country} 要点说明] ' + item.exam_tips
-    return jsonify({
-        'title': item.title,
-        'country': country,
-        'solution': compared_solution,
-        'exam_tips': compared_tips,
-    })
-
-
-@main.route('/api/topic/<int:topic_id>/exercises')
-@login_required
-def api_exercises(topic_id):
-    difficulty = request.args.get('difficulty')
-    limit = request.args.get('limit', type=int)
-
-    query = ExerciseQuestion.query.filter_by(topic_id=topic_id)
-    if difficulty:
-        query = query.filter_by(difficulty=difficulty)
-    items = query.all()
-    if limit:
-        items = items[:limit]
-    return jsonify([
-        {
-            'id': i.id,
-            'title': i.title,
-            'difficulty': i.difficulty,
-            'question': i.question,
-        }
-        for i in items
-    ])
-
-
-@main.route('/api/exercise/<int:exercise_id>')
-@login_required
-def api_exercise_detail(exercise_id):
-    item = db.session.get(ExerciseQuestion, exercise_id)
-    if not item:
-        return jsonify({'error': 'Not found'}), 404
-    return jsonify({
-        'id': item.id,
-        'title': item.title,
-        'difficulty': item.difficulty,
-        'question': item.question,
-    })
-
-
-@main.route('/api/exercise/<int:exercise_id>/standard-answer')
-@login_required
-def api_standard_answer(exercise_id):
-    item = db.session.get(ExerciseQuestion, exercise_id)
-    if not item:
-        return jsonify({'error': 'Not found'}), 404
-    return jsonify({
-        'standard_answer': item.standard_answer,
-        'marking_points': item.marking_points,
-    })
-
-
-@main.route('/api/exercise/<int:exercise_id>/submit', methods=['POST'])
-@login_required
-def api_submit_exercise(exercise_id):
-    item = db.session.get(ExerciseQuestion, exercise_id)
-    if not item:
-        return jsonify({'error': 'Not found'}), 404
-
-    answer_text = request.form.get('answer_text', '').strip()
-    file = request.files.get('answer_file')
-    file_path = None
-
-    if file and file.filename:
-        if allowed_file(file.filename):
-            ext = file.filename.rsplit('.', 1)[1].lower()
-            filename = f'{uuid.uuid4().hex}.{ext}'
-            save_path = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(filename))
-            file.save(save_path)
-            file_path = save_path
-        else:
-            return jsonify({'error': '文件类型不支持'}), 400
-
-    score, feedback = simple_score(answer_text, item.standard_answer, item.marking_points)
-
-    submission = PracticeSubmission(
-        user_id=current_user.id,
-        exercise_id=item.id,
-        uploaded_answer_text=answer_text or None,
-        uploaded_file_path=file_path,
-        score=score,
-        feedback=feedback,
-        standard_answer_snapshot=item.standard_answer,
-    )
-    db.session.add(submission)
+    db.session.add(QuizAttempt(
+        user_id=current_user.id, country=q.country, province=q.province, grade=q.grade, subject=q.subject,
+        unit=q.unit, question_type=q.question_type, question_snapshot=q.question, user_answer=user_answer,
+        correct_answer_snapshot=q.correct_answer, is_correct=is_correct, score=score, max_score=q.score_value,
+        explanation_snapshot=q.explanation + ("\n\n" + feedback_extra if feedback_extra else "")
+    ))
     db.session.commit()
 
-    return jsonify({
-        'submission_id': submission.id,
-        'score': score,
-        'feedback': feedback,
-        'standard_answer': item.standard_answer,
-    })
+    return render_template("quiz_result_one.html", q=q, user_answer=user_answer or "未作答", is_correct=is_correct,
+                           score=score, max_score=q.score_value, feedback_extra=feedback_extra,
+                           next_info={"country": country, "province": province, "grade": grade, "subject": subject, "qtype": qtype})
 
-
-@main.route('/submissions')
+@main.route("/photo-upload")
 @login_required
-def submissions():
-    items = PracticeSubmission.query.filter_by(user_id=current_user.id).order_by(PracticeSubmission.created_at.desc()).all()
-    return render_template('submissions.html', submissions=items)
+def photo_upload():
+    countries = sorted({u.country for u in CurriculumUnit.query.all()})
+    return render_template("photo_upload.html", countries=countries)
 
-
-
-def fetch_trivia_questions(amount=5, difficulty='', qtype='', category='19'):
-    url = 'https://opentdb.com/api.php'
-    attempts = [
-        {'amount': amount, 'category': category, 'difficulty': difficulty, 'type': qtype},
-        {'amount': amount, 'category': category, 'type': qtype},
-        {'amount': amount, 'category': category},
-        {'amount': amount},
-    ]
-
-    for params in attempts:
-        clean_params = {k: v for k, v in params.items() if v}
-        try:
-            resp = requests.get(url, params=clean_params, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get('response_code') == 0 and data.get('results'):
-                questions = []
-                for item in data['results']:
-                    correct = html.unescape(item['correct_answer'])
-                    incorrect = [html.unescape(x) for x in item['incorrect_answers']]
-                    choices = incorrect + [correct]
-                    random.shuffle(choices)
-                    questions.append({
-                        'question': html.unescape(item['question']),
-                        'correct_answer': correct,
-                        'choices': choices,
-                        'difficulty': item.get('difficulty', ''),
-                        'type': item.get('type', ''),
-                        'category': item.get('category', ''),
-                    })
-                return questions
-        except Exception:
-            continue
-    return []
-
-
-@main.route('/api/topic/<int:topic_id>/resources')
+@main.route("/photo-analyze", methods=["POST"])
 @login_required
-def api_remote_resources(topic_id):
-    catalog = load_remote_catalog()
-    topic = get_topic(catalog, topic_id)
-    if not topic:
-        return jsonify({'error': 'Not found'}), 404
+def photo_analyze():
+    country = request.form.get("country", "")
+    province = request.form.get("province", "")
+    grade = request.form.get("grade", "")
+    subject = request.form.get("subject", "")
+    image = request.files.get("photo")
+    if not image or not image.filename:
+        flash("请先上传图片。", "danger")
+        return redirect(url_for("main.photo_upload"))
+    ext = os.path.splitext(image.filename)[1].lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
+        flash("只支持 png / jpg / jpeg / webp 图片。", "danger")
+        return redirect(url_for("main.photo_upload"))
 
-    return jsonify({
-        'id': topic['id'],
-        'knowledge_point': topic['knowledge_point'],
-        'requirement': topic['requirement'],
-        'explanation': topic['explanation'],
-        'remote_source': topic.get('remote_source', ''),
-        'resource_links': topic.get('resource_links', []),
-    })
+    upload_dir = os.path.join(current_app.root_path, "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    save_name = f"user_{current_user.id}_{image.filename}"
+    save_path = os.path.join(upload_dir, save_name)
+    image.save(save_path)
 
-
-@main.route('/topic/<int:topic_id>/quiz/start', methods=['POST'])
-@login_required
-def start_topic_quiz(topic_id):
-    catalog = load_remote_catalog()
-    topic = get_topic(catalog, topic_id)
-    if not topic:
-        flash('没有找到该知识点。', 'danger')
-        return redirect(url_for('main.dashboard'))
-
-    amount = request.form.get('amount', type=int, default=5)
-    difficulty = request.form.get('difficulty', '').strip()
-    qtype = request.form.get('qtype', '').strip()
-
-    questions = fetch_trivia_questions(
-        amount=amount,
-        difficulty=difficulty,
-        qtype=qtype,
-        category=str(topic.get('quiz_category', '19'))
-    )
-
-    if not questions:
-        flash('当前条件下没有拿到线上题目，请换个难度或题型再试。', 'danger')
-        return redirect(url_for('main.dashboard'))
-
-    session['trivia_questions'] = questions
-    session['trivia_topic_name'] = topic['knowledge_point']
-    return redirect(url_for('main.trivia_play'))
-
-
-@main.route('/trivia/play')
-@login_required
-def trivia_play():
-    questions = session.get('trivia_questions', [])
-    if not questions:
-        flash('没有正在进行的在线练习，请先从主页选择知识点。', 'danger')
-        return redirect(url_for('main.dashboard'))
-
-    return render_template(
-        'trivia_quiz.html',
-        questions=questions,
-        topic_name=session.get('trivia_topic_name', '在线练习')
-    )
-
-
-@main.route('/trivia/submit', methods=['POST'])
-@login_required
-def trivia_submit():
-    questions = session.get('trivia_questions', [])
-    if not questions:
-        flash('题目已失效，请重新开始。', 'danger')
-        return redirect(url_for('main.dashboard'))
-
-    score = 0
-    results = []
-
-    for i, q in enumerate(questions):
-        user_answer = request.form.get(f'q{i}', '')
-        is_correct = user_answer == q['correct_answer']
-        if is_correct:
-            score += 1
-        results.append({
-            'question': q['question'],
-            'choices': q['choices'],
-            'correct_answer': q['correct_answer'],
-            'user_answer': user_answer,
-            'is_correct': is_correct
+    try:
+        data = analyze_question_page(save_path, subject or "")
+        questions = data.get("questions", [])
+        if not questions:
+            flash("识别到了图片，但没有成功拆出题目。可以换一张更清晰的图片再试。", "danger")
+            return redirect(url_for("main.photo_upload"))
+        return render_template("photo_results.html", questions=questions, context={
+            "country": country, "province": province, "grade": grade, "subject": subject
         })
+    except Exception as e:
+        flash(f"图片识别失败：{e}", "danger")
+        return redirect(url_for("main.photo_upload"))
 
-    percent = round(score / len(questions) * 100, 1) if questions else 0
-    session.pop('trivia_questions', None)
-
-    return render_template(
-        'trivia_result.html',
-        results=results,
-        score=score,
-        total=len(questions),
-        percent=percent,
-        topic_name=session.get('trivia_topic_name', '在线练习')
-    )
+@main.route("/history")
+@login_required
+def history():
+    attempts = QuizAttempt.query.filter_by(user_id=current_user.id).order_by(QuizAttempt.created_at.desc()).all()
+    return render_template("history.html", attempts=attempts)

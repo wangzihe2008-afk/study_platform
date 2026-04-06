@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><title>登录</title><style>
+<!DOCTYPE html><html lang='zh'><head><meta charset='UTF-8'><title>识题结果</title><style>
 body{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#1f2937}
 nav{background:#184a78;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
 nav a{color:#fff;text-decoration:none;margin-left:16px;font-weight:600}
@@ -21,4 +21,4 @@ th{background:#f8fafc}
 .wrap{max-width:430px;margin:70px auto;background:white;padding:24px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.08)}
 .answer{display:block;margin:10px 0;padding:12px;border:1px solid #dbe4ef;border-radius:12px;background:#fff}
 .ok{color:#15803d;font-weight:700}.bad{color:#b91c1c;font-weight:700}
-</style></head><body><div class="wrap"><h2 style="margin-top:0">登录</h2>{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for category, message in messages %}<div class='msg'>{{ message }}</div>{% endfor %}{% endif %}{% endwith %}<form method='post'><input type='email' name='email' placeholder='邮箱' required><input type='password' name='password' placeholder='密码' required><button type='submit'>登录</button></form><p>没有账号？<a href='/register'>去注册</a></p></div></body></html>
+</style></head><body><nav><div><strong>Study Platform</strong></div><div><a href='/dashboard'>主页</a><a href='/history'>做题记录</a><a href='/photo-upload'>拍照识题</a><a href='/logout'>退出</a></div></nav><div class='container'><div class='card'><h2 style='margin-top:0'>整页题目识别结果</h2><div class='small'>{{ context.country }} / {{ context.province }} / {{ context.grade }} / {{ context.subject }}</div><div class='panel' style='margin-top:12px'>下面按系统识别结果拆分出了每一道题，并给出基础讲解。免费 OCR 版本更适合清晰、规整、正向拍摄的题页。</div></div>{% for q in questions %}<div class='card'><div><span class='pill'>第 {{ q.number }} 题</span> <span class='pill'>{{ q.type }}</span> <span class='pill'>{{ q.difficulty }}</span></div><h3 style='margin:12px 0 8px 0'>{{ q.question }}</h3>{% if q.choices %}<ul>{% for c in q.choices %}<li>{{ c }}</li>{% endfor %}</ul>{% endif %}<p><strong>参考答案：</strong>{{ q.answer }}</p><div class='panel'><strong>讲解：</strong><br>{{ q.explanation }}</div></div>{% endfor %}</div></body></html>

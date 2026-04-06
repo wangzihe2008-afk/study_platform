@@ -1,173 +1,55 @@
-{% extends 'base.html' %}
-{% block content %}
-<div class="card">
-    <h2>筛选知识点（线上资源库）</h2>
-    <p class="muted">当前页面沿用原来的学习界面，但知识点、讲解资源和在线练习来自线上资源库，不再依赖线下手动录入。</p>
-    <div class="row">
-        <div class="col">
-            <label>国家</label>
-            <select id="country">
-                <option value="">请选择国家</option>
-                {% for c in countries %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
-            </select>
-        </div>
-        <div class="col">
-            <label>省份 / 地区</label>
-            <select id="province">
-                <option value="">请选择省份 / 地区</option>
-                {% for p in provinces %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
-            </select>
-        </div>
-        <div class="col">
-            <label>年级</label>
-            <select id="grade">
-                <option value="">请选择年级</option>
-                {% for g in grades %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
-            </select>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col">
-            <label>学科</label>
-            <div>
-                {% for s in subjects %}
-                    <label><input type="radio" name="subject" value="{{ s }}"> {{ s }}</label>
-                {% endfor %}
-            </div>
-        </div>
-        <div class="col" style="display:flex;align-items:flex-end;">
-            <button onclick="loadTopics()">查询知识点</button>
-        </div>
-    </div>
-</div>
+<!DOCTYPE html><html lang='zh'><head><meta charset='UTF-8'><title>Study Platform</title><style>
+body{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#1f2937}
+nav{background:#184a78;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+nav a{color:#fff;text-decoration:none;margin-left:16px;font-weight:600}
+.container{max-width:1180px;margin:24px auto;padding:0 12px}
+.card{background:#fff;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:20px;margin-bottom:18px}
+.grid3{display:grid;grid-template-columns:2fr 2fr 1.2fr;gap:12px}
+.grid4{display:grid;grid-template-columns:1.3fr 1.3fr 0.8fr 1fr;gap:12px}
+select,button,input,textarea{padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;font-size:14px;box-sizing:border-box}
+button{background:#1f5c93;color:#fff;border:none;cursor:pointer}
+button.secondary{background:#eef6ff;color:#1f5c93;border:1px solid #bfd4ea}
+table{width:100%;border-collapse:collapse}
+th,td{padding:12px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top;text-align:left}
+th{background:#f8fafc}
+.panel{background:#f8fbff;border:1px solid #d9e5f3;border-radius:12px;padding:14px;line-height:1.7;white-space:pre-wrap}
+.small{color:#64748b;font-size:13px}
+.req-item{margin:6px 0}
+.msg{margin:10px 0;padding:10px;background:#f5f8ff;border-radius:10px}
+.pill{display:inline-block;background:#eef6ff;color:#1f5c93;border:1px solid #cfe2f5;padding:4px 10px;border-radius:999px;font-size:12px}
+.hero{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.wrap{max-width:430px;margin:70px auto;background:white;padding:24px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.answer{display:block;margin:10px 0;padding:12px;border:1px solid #dbe4ef;border-radius:12px;background:#fff}
+.ok{color:#15803d;font-weight:700}.bad{color:#b91c1c;font-weight:700}
+</style></head><body>
+<nav><div><strong>Study Platform</strong></div><div><a href='/dashboard'>主页</a><a href='/history'>做题记录</a><a href='/photo-upload'>拍照识题</a><a href='/logout'>退出</a></div></nav>
+<div class='container'>
+{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}{% for category, message in messages %}<div class='msg'>{{ message }}</div>{% endfor %}{% endif %}{% endwith %}
+<div class='card'><div class='hero'><div><h2 style='margin:0 0 8px 0'>筛选知识点 / 课程单元</h2><div class='small'>欢迎，{{ user.first_name }}。这里会按筛选结果显示该学科下的多个单元，不会只显示一个。</div></div><span class='pill'>单题模式刷题</span></div>
+<div class='grid3' style='margin-top:14px'><div><div class='small'>国家</div><select id='country'><option value=''>选择国家</option>{% for c in countries %}<option value='{{ c }}'>{{ c }}</option>{% endfor %}</select></div><div><div class='small'>省份 / 地区</div><select id='province'><option value=''>选择省份 / 地区</option></select></div><div><div class='small'>年级</div><select id='grade'><option value=''>选择年级</option></select></div></div>
+<div style='margin-top:16px'><div class='small'>学科</div><div id='subjectBox' style='display:flex;gap:14px;flex-wrap:wrap;margin-top:8px'></div></div>
+<div style='margin-top:16px'><button id='searchBtn' type='button'>查询知识点</button></div></div>
 
-<div class="card">
-    <h2>知识点列表</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>知识点</th>
-                <th>要求</th>
-                <th>详细讲解</th>
-                <th>线上资源</th>
-                <th>在线做题</th>
-            </tr>
-        </thead>
-        <tbody id="topicTableBody">
-            <tr><td colspan="5" class="muted">请先筛选条件并点击查询。</td></tr>
-        </tbody>
-    </table>
-</div>
+<div class='card'><h2 style='margin-top:0'>知识点 / 单元</h2><table><thead><tr><th>单元</th><th>要求</th><th>详细讲解</th><th>线上资源</th><th>刷题</th></tr></thead><tbody id='unitTableBody'><tr><td colspan='5' class='small'>请先筛选并点击查询知识点。</td></tr></tbody></table></div>
+<div class='card'><h2 style='margin-top:0'>大纲要求</h2><div id='requirementPanel' class='panel'>点击某个单元的“要求”查看完整列表。</div></div>
+<div class='card'><h2 style='margin-top:0'>详细讲解</h2><div id='detailPanel' class='panel'>点击某个单元的“详细讲解”查看更完整内容。</div></div>
+<div class='card'><h2 style='margin-top:0'>线上资源</h2><div id='resourcePanel' class='panel'>点击某个单元的“线上资源”查看官方或参考链接。</div></div>
 
-<div id="detailArea" class="card" style="display:none;">
-    <h2 id="detailTitle">详情</h2>
-    <div id="detailContent"></div>
+<form id='quizForm' action='/quiz/start' method='post' style='display:none'><input type='hidden' name='country' id='f_country'><input type='hidden' name='province' id='f_province'><input type='hidden' name='grade' id='f_grade'><input type='hidden' name='subject' id='f_subject'><input type='hidden' name='unit' id='f_unit'><input type='hidden' name='question_type' id='f_qtype'></form>
 </div>
-
 <script>
-let currentTopics = [];
-
-function getSelectedSubject() {
-    const selected = document.querySelector('input[name="subject"]:checked');
-    return selected ? selected.value : '';
-}
-
-async function loadTopics() {
-    const params = new URLSearchParams({
-        country: document.getElementById('country').value,
-        province: document.getElementById('province').value,
-        grade: document.getElementById('grade').value,
-        subject: getSelectedSubject()
-    });
-
-    const res = await fetch(`/api/topics?${params.toString()}`);
-    const data = await res.json();
-    currentTopics = data;
-    const body = document.getElementById('topicTableBody');
-
-    if (!data.length) {
-        body.innerHTML = '<tr><td colspan="5">没有找到符合条件的线上知识点。</td></tr>';
-        return;
-    }
-
-    body.innerHTML = data.map(t => `
-        <tr>
-            <td>${t.knowledge_point}</td>
-            <td><button class="small-btn" onclick="showRequirement(${t.id})">要求</button></td>
-            <td><button class="small-btn" onclick="showExplanation(${t.id})">详细讲解</button></td>
-            <td><button class="small-btn" onclick="showResources(${t.id})">线上资源</button></td>
-            <td><button class="small-btn" onclick="showQuizOptions(${t.id}, '${t.knowledge_point.replace(/'/g, "&#39;")}')">在线做题</button></td>
-        </tr>
-    `).join('');
-}
-
-function openDetail(title, html) {
-    document.getElementById('detailArea').style.display = 'block';
-    document.getElementById('detailTitle').innerText = title;
-    document.getElementById('detailContent').innerHTML = html;
-}
-
-function findTopic(topicId) {
-    return currentTopics.find(t => t.id === topicId);
-}
-
-function showRequirement(topicId) {
-    const t = findTopic(topicId);
-    openDetail('大纲要求', `<pre>${t.requirement}</pre>`);
-}
-
-function showExplanation(topicId) {
-    const t = findTopic(topicId);
-    openDetail('详细讲解', `<pre>${t.explanation}</pre>`);
-}
-
-async function showResources(topicId) {
-    const res = await fetch(`/api/topic/${topicId}/resources`);
-    const data = await res.json();
-    const links = (data.resource_links || []).map(item => `
-        <div class="modal">
-            <strong>${item.title}</strong>
-            <p class="muted">类型：${item.type || 'resource'}</p>
-            <a href="${item.url}" target="_blank" rel="noopener">打开资源</a>
-        </div>
-    `).join('');
-
-    openDetail(`线上资源 - ${data.knowledge_point}`, `
-        <p><strong>资源来源：</strong>${data.remote_source || 'Online Library'}</p>
-        <pre>${data.explanation}</pre>
-        ${links || '<p>当前没有资源链接。</p>'}
-    `);
-}
-
-function showQuizOptions(topicId, topicName) {
-    openDetail(`在线做题设置 - ${topicName}`, `
-        <div class="modal">
-            <form method="post" action="/topic/${topicId}/quiz/start">
-                <label>题目数量</label>
-                <select name="amount">
-                    <option value="5">5</option>
-                    <option value="10">10</option>
-                </select>
-
-                <label>难度</label>
-                <select name="difficulty">
-                    <option value="">任意</option>
-                    <option value="easy">简单</option>
-                    <option value="medium">中等</option>
-                    <option value="hard">困难</option>
-                </select>
-
-                <label>题型</label>
-                <select name="qtype">
-                    <option value="">任意</option>
-                    <option value="multiple">选择题</option>
-                    <option value="boolean">判断题</option>
-                </select>
-
-                <button type="submit">开始在线练习</button>
-            </form>
-        </div>
-    `);
-}
-</script>
-{% endblock %}
+let loadedUnits = [];
+async function fetchJSON(url){ const r = await fetch(url); return await r.json(); }
+async function loadProvinces(){ const country=document.getElementById('country').value; document.getElementById('province').innerHTML='<option value="">选择省份 / 地区</option>'; document.getElementById('grade').innerHTML='<option value="">选择年级</option>'; document.getElementById('subjectBox').innerHTML=''; if(!country) return; const data=await fetchJSON(`/api/provinces?country=${encodeURIComponent(country)}`); data.forEach(v=>{let o=document.createElement('option'); o.value=v; o.textContent=v; document.getElementById('province').appendChild(o);}); }
+async function loadGrades(){ const country=document.getElementById('country').value; const province=document.getElementById('province').value; document.getElementById('grade').innerHTML='<option value="">选择年级</option>'; document.getElementById('subjectBox').innerHTML=''; if(!country||!province) return; const data=await fetchJSON(`/api/grades?country=${encodeURIComponent(country)}&province=${encodeURIComponent(province)}`); data.forEach(v=>{let o=document.createElement('option'); o.value=v; o.textContent=v; document.getElementById('grade').appendChild(o);}); }
+async function loadSubjects(){ const country=document.getElementById('country').value; const province=document.getElementById('province').value; const grade=document.getElementById('grade').value; const box=document.getElementById('subjectBox'); box.innerHTML=''; if(!country||!province||!grade) return; const data=await fetchJSON(`/api/subjects?country=${encodeURIComponent(country)}&province=${encodeURIComponent(province)}&grade=${encodeURIComponent(grade)}`); data.forEach((v,idx)=>{ let label=document.createElement('label'); label.innerHTML=`<input type="radio" name="subject" value="${v}" ${idx===0?'checked':''}> ${v}`; box.appendChild(label); }); }
+async function loadUnits(){ const country=document.getElementById('country').value; const province=document.getElementById('province').value; const grade=document.getElementById('grade').value; const subjectNode=document.querySelector('input[name="subject"]:checked'); const tbody=document.getElementById('unitTableBody'); if(!country||!province||!grade||!subjectNode){tbody.innerHTML='<tr><td colspan="5">请先完成筛选。</td></tr>'; return;} const subject=subjectNode.value; loadedUnits = await fetchJSON(`/api/units?country=${encodeURIComponent(country)}&province=${encodeURIComponent(province)}&grade=${encodeURIComponent(grade)}&subject=${encodeURIComponent(subject)}`); if(!loadedUnits.length){tbody.innerHTML='<tr><td colspan="5">没有找到对应单元。</td></tr>'; return;} tbody.innerHTML=''; loadedUnits.forEach((u,idx)=>{ let tr=document.createElement('tr'); tr.innerHTML=`<td>${u.unit}</td><td><button type="button" class="secondary" onclick="showRequirements(${idx})">要求</button></td><td><button type="button" class="secondary" onclick="showDetails(${idx})">详细讲解</button></td><td><button type="button" class="secondary" onclick="showResources(${idx})">线上资源</button></td><td><button type="button" onclick="startQuiz(${idx}, 'multiple_choice')">选择题</button> <button type="button" class="secondary" onclick="startQuiz(${idx}, 'true_false')">判断题</button> <button type="button" class="secondary" onclick="startQuiz(${idx}, 'written')">应用题</button></td>`; tbody.appendChild(tr); }); }
+function showRequirements(idx){ const u=loadedUnits[idx]; document.getElementById('requirementPanel').innerHTML=`<h3>${u.unit}</h3>` + u.requirements.map((r,i)=>`<div class="req-item">${i+1}. ${r}</div>`).join(''); }
+function showDetails(idx){ const u=loadedUnits[idx]; document.getElementById('detailPanel').innerHTML=`<h3>${u.unit}</h3><div>${u.content}</div>`; }
+function showResources(idx){ const u=loadedUnits[idx]; let html=`<h3>${u.unit}</h3>`; html += (u.resources && u.resources.length) ? u.resources.map(r=>`<div style="margin:6px 0"><a href="${r.url}" target="_blank">${r.title}</a></div>`).join('') : '<div>暂无资源链接。</div>'; document.getElementById('resourcePanel').innerHTML=html; }
+function startQuiz(idx, qtype){ const country=document.getElementById('country').value; const province=document.getElementById('province').value; const grade=document.getElementById('grade').value; const subjectNode=document.querySelector('input[name="subject"]:checked'); const subject=subjectNode ? subjectNode.value : ''; const unit=loadedUnits[idx].unit; document.getElementById('f_country').value=country; document.getElementById('f_province').value=province; document.getElementById('f_grade').value=grade; document.getElementById('f_subject').value=subject; document.getElementById('f_unit').value=unit; document.getElementById('f_qtype').value=qtype; document.getElementById('quizForm').submit(); }
+document.getElementById('country').addEventListener('change', loadProvinces);
+document.getElementById('province').addEventListener('change', loadGrades);
+document.getElementById('grade').addEventListener('change', loadSubjects);
+document.getElementById('searchBtn').addEventListener('click', loadUnits);
+</script></body></html>

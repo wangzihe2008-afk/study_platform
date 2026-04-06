@@ -1,54 +1,30 @@
-import os
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
-from dotenv import load_dotenv
+from .models import db, User
 
-load_dotenv()
-
-db = SQLAlchemy()
 login_manager = LoginManager()
-login_manager.login_view = 'main.login'
+login_manager.login_view = "main.login"
+login_manager.login_message = "请先登录后再继续。"
 
-
-def _normalize_database_url(raw_url: str | None) -> str:
-    """Return a SQLAlchemy-compatible DB URL.
-
-    Render Postgres provides a PostgreSQL connection string via DATABASE_URL.
-    Local development falls back to SQLite.
-    """
-    if not raw_url:
-        return 'sqlite:///study_platform.db'
-
-    # Compatibility guard: some platforms still expose postgres://
-    if raw_url.startswith('postgres://'):
-        return raw_url.replace('postgres://', 'postgresql://', 1)
-    return raw_url
-
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
 
 def create_app():
-    app = Flask(__name__, template_folder='templates', static_folder='static')
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
-    app.config['SQLALCHEMY_DATABASE_URI'] = _normalize_database_url(os.getenv('DATABASE_URL'))
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', os.path.join(os.getcwd(), 'uploads'))
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    app = Flask(__name__)
+    app.config["SECRET_KEY"] = "paddleocr-study-platform-secret"
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     db.init_app(app)
     login_manager.init_app(app)
-
-    from .models import User
-
-    @login_manager.user_loader
-    def load_user(user_id):
-        return db.session.get(User, int(user_id))
 
     from .routes import main
     app.register_blueprint(main)
 
     with app.app_context():
         db.create_all()
+        from .seed import seed_all
+        seed_all()
 
     return app
