@@ -1,27 +1,16 @@
 import os
 import uuid
-import html
-import random
-import requests
-
-from flask import (
-    Blueprint,
-    render_template,
-    request,
-    redirect,
-    url_for,
-    flash,
-    jsonify,
-    current_app,
-    session,
-)
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, session
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 from sqlalchemy import select
-
 from . import db
 from .models import User, Topic, ExampleQuestion, ExerciseQuestion, PracticeSubmission
 from .seed import seed_data
+from .remote_catalog import load_remote_catalog, get_filter_options, filter_catalog, get_topic
+import html
+import random
+import requests
 
 main = Blueprint('main', __name__)
 
@@ -62,48 +51,6 @@ def simple_score(user_answer: str, standard_answer: str, marking_points: str):
         feedback.append('建议补充公式、步骤、单位或最终结论。')
 
     return score, '\n'.join(feedback)
-
-
-def fetch_trivia_questions(amount=5, difficulty="", qtype="multiple", category="19"):
-    url = "https://opentdb.com/api.php"
-
-    attempts = [
-        {"amount": amount, "category": category, "difficulty": difficulty, "type": qtype},
-        {"amount": amount, "category": category, "type": qtype},
-        {"amount": amount, "category": category},
-        {"amount": amount},
-    ]
-
-    for params in attempts:
-        clean_params = {k: v for k, v in params.items() if v}
-        try:
-            resp = requests.get(url, params=clean_params, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-            print("DEBUG params =", clean_params)
-            print("DEBUG response_code =", data.get("response_code"))
-
-            if data.get("response_code") == 0 and data.get("results"):
-                questions = []
-                for item in data["results"]:
-                    correct = html.unescape(item["correct_answer"])
-                    incorrect = [html.unescape(x) for x in item["incorrect_answers"]]
-                    choices = incorrect + [correct]
-                    random.shuffle(choices)
-
-                    questions.append({
-                        "question": html.unescape(item["question"]),
-                        "correct_answer": correct,
-                        "choices": choices,
-                        "difficulty": item.get("difficulty", ""),
-                        "type": item.get("type", ""),
-                        "category": item.get("category", "")
-                    })
-                return questions
-        except Exception as e:
-            print("DEBUG fetch error =", e)
-
-    return []
 
 
 @main.route('/')
@@ -164,38 +111,34 @@ def logout():
 @main.route('/dashboard')
 @login_required
 def dashboard():
-    seed_data()
-    countries = db.session.execute(select(Topic.country).distinct()).scalars().all()
-    provinces = db.session.execute(select(Topic.province).distinct()).scalars().all()
-    grades = db.session.execute(select(Topic.grade).distinct()).scalars().all()
-    return render_template('dashboard.html', countries=countries, provinces=provinces, grades=grades)
+    catalog = load_remote_catalog()
+    options = get_filter_options(catalog)
+    return render_template(
+        'dashboard.html',
+        countries=options['countries'],
+        provinces=options['provinces'],
+        grades=options['grades'],
+        subjects=options['subjects'],
+    )
 
 
 @main.route('/api/topics')
 @login_required
 def api_topics():
-    country = request.args.get('country')
-    province = request.args.get('province')
-    subject = request.args.get('subject')
-    grade = request.args.get('grade')
+    catalog = load_remote_catalog()
+    country = request.args.get('country', '')
+    province = request.args.get('province', '')
+    subject = request.args.get('subject', '')
+    grade = request.args.get('grade', '')
 
-    query = Topic.query
-    if country:
-        query = query.filter_by(country=country)
-    if province:
-        query = query.filter_by(province=province)
-    if subject:
-        query = query.filter_by(subject=subject)
-    if grade:
-        query = query.filter_by(grade=grade)
-
-    topics = query.all()
+    topics = filter_catalog(catalog, country=country, province=province, grade=grade, subject=subject)
     return jsonify([
         {
-            'id': t.id,
-            'knowledge_point': t.knowledge_point,
-            'requirement': t.requirement,
-            'explanation': t.explanation,
+            'id': t['id'],
+            'knowledge_point': t['knowledge_point'],
+            'requirement': t['requirement'],
+            'explanation': t['explanation'],
+            'remote_source': t.get('remote_source', ''),
         }
         for t in topics
     ])
@@ -354,31 +297,103 @@ def submissions():
     return render_template('submissions.html', submissions=items)
 
 
-@main.route('/trivia', methods=['GET', 'POST'])
+
+def fetch_trivia_questions(amount=5, difficulty='', qtype='', category='19'):
+    url = 'https://opentdb.com/api.php'
+    attempts = [
+        {'amount': amount, 'category': category, 'difficulty': difficulty, 'type': qtype},
+        {'amount': amount, 'category': category, 'type': qtype},
+        {'amount': amount, 'category': category},
+        {'amount': amount},
+    ]
+
+    for params in attempts:
+        clean_params = {k: v for k, v in params.items() if v}
+        try:
+            resp = requests.get(url, params=clean_params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get('response_code') == 0 and data.get('results'):
+                questions = []
+                for item in data['results']:
+                    correct = html.unescape(item['correct_answer'])
+                    incorrect = [html.unescape(x) for x in item['incorrect_answers']]
+                    choices = incorrect + [correct]
+                    random.shuffle(choices)
+                    questions.append({
+                        'question': html.unescape(item['question']),
+                        'correct_answer': correct,
+                        'choices': choices,
+                        'difficulty': item.get('difficulty', ''),
+                        'type': item.get('type', ''),
+                        'category': item.get('category', ''),
+                    })
+                return questions
+        except Exception:
+            continue
+    return []
+
+
+@main.route('/api/topic/<int:topic_id>/resources')
 @login_required
-def trivia():
-    if request.method == 'POST':
-        amount = int(request.form.get('amount', 5))
-        difficulty = request.form.get('difficulty', '')
-        qtype = request.form.get('qtype', 'multiple')
+def api_remote_resources(topic_id):
+    catalog = load_remote_catalog()
+    topic = get_topic(catalog, topic_id)
+    if not topic:
+        return jsonify({'error': 'Not found'}), 404
 
-        questions = fetch_trivia_questions(
-            amount=amount,
-            difficulty=difficulty,
-            qtype=qtype,
-            category='19'
-        )
+    return jsonify({
+        'id': topic['id'],
+        'knowledge_point': topic['knowledge_point'],
+        'requirement': topic['requirement'],
+        'explanation': topic['explanation'],
+        'remote_source': topic.get('remote_source', ''),
+        'resource_links': topic.get('resource_links', []),
+    })
 
-        if not questions:
-            flash('没有拿到题目，请换个难度或题型再试。', 'danger')
-            return redirect(url_for('main.trivia'))
 
-        session['trivia_questions'] = questions
-        print("DEBUG len(questions) =", len(questions))
-        return render_template('trivia_quiz.html', questions=questions)
+@main.route('/topic/<int:topic_id>/quiz/start', methods=['POST'])
+@login_required
+def start_topic_quiz(topic_id):
+    catalog = load_remote_catalog()
+    topic = get_topic(catalog, topic_id)
+    if not topic:
+        flash('没有找到该知识点。', 'danger')
+        return redirect(url_for('main.dashboard'))
 
-    return render_template('trivia_form.html')
+    amount = request.form.get('amount', type=int, default=5)
+    difficulty = request.form.get('difficulty', '').strip()
+    qtype = request.form.get('qtype', '').strip()
 
+    questions = fetch_trivia_questions(
+        amount=amount,
+        difficulty=difficulty,
+        qtype=qtype,
+        category=str(topic.get('quiz_category', '19'))
+    )
+
+    if not questions:
+        flash('当前条件下没有拿到线上题目，请换个难度或题型再试。', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    session['trivia_questions'] = questions
+    session['trivia_topic_name'] = topic['knowledge_point']
+    return redirect(url_for('main.trivia_play'))
+
+
+@main.route('/trivia/play')
+@login_required
+def trivia_play():
+    questions = session.get('trivia_questions', [])
+    if not questions:
+        flash('没有正在进行的在线练习，请先从主页选择知识点。', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    return render_template(
+        'trivia_quiz.html',
+        questions=questions,
+        topic_name=session.get('trivia_topic_name', '在线练习')
+    )
 
 
 @main.route('/trivia/submit', methods=['POST'])
@@ -387,7 +402,7 @@ def trivia_submit():
     questions = session.get('trivia_questions', [])
     if not questions:
         flash('题目已失效，请重新开始。', 'danger')
-        return redirect(url_for('main.trivia'))
+        return redirect(url_for('main.dashboard'))
 
     score = 0
     results = []
@@ -395,10 +410,8 @@ def trivia_submit():
     for i, q in enumerate(questions):
         user_answer = request.form.get(f'q{i}', '')
         is_correct = user_answer == q['correct_answer']
-
         if is_correct:
             score += 1
-
         results.append({
             'question': q['question'],
             'choices': q['choices'],
@@ -408,11 +421,13 @@ def trivia_submit():
         })
 
     percent = round(score / len(questions) * 100, 1) if questions else 0
+    session.pop('trivia_questions', None)
 
     return render_template(
         'trivia_result.html',
         results=results,
         score=score,
         total=len(questions),
-        percent=percent
+        percent=percent,
+        topic_name=session.get('trivia_topic_name', '在线练习')
     )

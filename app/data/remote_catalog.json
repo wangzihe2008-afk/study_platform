@@ -1,0 +1,85 @@
+[
+  {
+    "id": 1,
+    "country": "Canada",
+    "province": "Ontario",
+    "grade": "10",
+    "subject": "Math",
+    "knowledge_point": "Quadratic Functions",
+    "requirement": "Understand vertex form, standard form, direction of opening, axis of symmetry, and transformations of quadratic graphs.",
+    "explanation": "Quadratic functions can be written as y = ax² + bx + c or y = a(x-h)² + k. The sign of a determines whether the parabola opens up or down, and (h, k) is the vertex in vertex form.",
+    "remote_source": "CK-12 / Khan Academy / Open Trivia DB",
+    "quiz_category": "19",
+    "resource_links": [
+      {"title": "CK-12 Algebra Concepts", "url": "https://www.ck12.org/teacher/", "type": "lesson"},
+      {"title": "Khan Academy Algebra", "url": "https://www.khanacademy.org/math/algebra", "type": "video"},
+      {"title": "Ontario curriculum keyword search", "url": "https://www.google.com/search?q=Ontario+quadratic+functions+curriculum", "type": "search"}
+    ]
+  },
+  {
+    "id": 2,
+    "country": "Canada",
+    "province": "Ontario",
+    "grade": "10",
+    "subject": "Physics",
+    "knowledge_point": "Velocity and Acceleration",
+    "requirement": "Distinguish speed, velocity and acceleration, and solve basic constant-acceleration problems.",
+    "explanation": "Velocity includes direction. Acceleration measures the rate of change in velocity. A common formula is a = (vf - vi) / t.",
+    "remote_source": "CK-12 / Khan Academy / Open Trivia DB",
+    "quiz_category": "17",
+    "resource_links": [
+      {"title": "CK-12 Physics Concepts", "url": "https://www.ck12.org/teacher/", "type": "lesson"},
+      {"title": "Khan Academy Physics", "url": "https://www.khanacademy.org/science/physics", "type": "video"},
+      {"title": "Acceleration search", "url": "https://www.google.com/search?q=velocity+acceleration+lesson", "type": "search"}
+    ]
+  },
+  {
+    "id": 3,
+    "country": "Canada",
+    "province": "Ontario",
+    "grade": "10",
+    "subject": "Chemistry",
+    "knowledge_point": "Atomic Structure",
+    "requirement": "Identify protons, neutrons, electrons, atomic number, and mass number.",
+    "explanation": "Atoms contain protons and neutrons in the nucleus and electrons around the nucleus. Atomic number equals proton count.",
+    "remote_source": "CK-12 / Khan Academy / Open Trivia DB",
+    "quiz_category": "17",
+    "resource_links": [
+      {"title": "CK-12 Chemistry Concepts", "url": "https://www.ck12.org/teacher/", "type": "lesson"},
+      {"title": "Khan Academy Chemistry", "url": "https://www.khanacademy.org/science/chemistry", "type": "video"},
+      {"title": "Atomic structure search", "url": "https://www.google.com/search?q=atomic+structure+lesson", "type": "search"}
+    ]
+  },
+  {
+    "id": 4,
+    "country": "USA",
+    "province": "California",
+    "grade": "10",
+    "subject": "Math",
+    "knowledge_point": "Linear Functions",
+    "requirement": "Model slope, intercepts, and graphs of linear relationships.",
+    "explanation": "A linear function has constant rate of change. In y = mx + b, m is the slope and b is the y-intercept.",
+    "remote_source": "CK-12 / Khan Academy / Open Trivia DB",
+    "quiz_category": "19",
+    "resource_links": [
+      {"title": "Khan Academy Linear Equations", "url": "https://www.khanacademy.org/math/algebra/x2f8bb11595b61c86:forms-of-linear-equations", "type": "video"},
+      {"title": "CK-12 Math Resources", "url": "https://www.ck12.org/teacher/", "type": "lesson"}
+    ]
+  },
+  {
+    "id": 5,
+    "country": "China",
+    "province": "Beijing",
+    "grade": "10",
+    "subject": "Math",
+    "knowledge_point": "Functions and Graphs",
+    "requirement": "Understand basic function notation, domain, range, and graph interpretation.",
+    "explanation": "A function maps each input to exactly one output. Domain is the set of valid inputs and range is the set of outputs.",
+    "remote_source": "CK-12 / Khan Academy / Open Trivia DB",
+    "quiz_category": "19",
+    "resource_links": [
+      {"title": "Khan Academy Functions", "url": "https://www.khanacademy.org/math/algebra/x2f8bb11595b61c86:functions", "type": "video"},
+      {"title": "Function concept search", "url": "https://www.google.com/search?q=functions+and+graphs+lesson", "type": "search"}
+    ]
+  }
+]

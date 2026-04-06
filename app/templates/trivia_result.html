@@ -1,39 +1,25 @@
-<h1 style="color:red;">ONLINE RESULT TEST</h1>
 {% extends "base.html" %}
 
 {% block content %}
-<h2>答题结果</h2>
+<h2>答题结果：{{ topic_name }}</h2>
 
-<div style="background:white; padding:20px; border-radius:8px; margin-bottom:24px; border:1px solid #ccc;">
+<div class="card">
     <p><strong>总分：</strong>{{ score }} / {{ total }}</p>
     <p><strong>正确率：</strong>{{ percent }}%</p>
 </div>
 
 {% for r in results %}
-<div style="background:white; padding:20px; border-radius:8px; margin-bottom:20px; border:1px solid #ccc;">
-    <p><strong>第 {{ loop.index }} 题：</strong>{{ r.question }}</p>
-
-    <p>
-        <strong>你的答案：</strong>
-        {% if r.user_answer %}
-        {{ r.user_answer }}
+    <div class="card">
+        <p><strong>第 {{ loop.index }} 题：</strong>{{ r.question }}</p>
+        <p><strong>你的答案：</strong>{{ r.user_answer or '未作答' }}</p>
+        <p><strong>正确答案：</strong>{{ r.correct_answer }}</p>
+        {% if r.is_correct %}
+            <p style="color:green; font-weight:bold;">✅ 正确</p>
         {% else %}
-        未作答
+            <p style="color:red; font-weight:bold;">❌ 错误</p>
         {% endif %}
-    </p>
-
-    <p><strong>正确答案：</strong>{{ r.correct_answer }}</p>
-
-    {% if r.is_correct %}
-    <p style="color:green; font-weight:bold;">✅ 正确</p>
-    {% else %}
-    <p style="color:red; font-weight:bold;">❌ 错误</p>
-    {% endif %}
-</div>
+    </div>
 {% endfor %}
 
-<a href="{{ url_for('main.trivia') }}"
-   style="display:inline-block; padding:10px 18px; background:#1f4f82; color:white; text-decoration:none; border-radius:6px;">
-    再来一组题
-</a>
+<a href="{{ url_for('main.dashboard') }}" class="small-btn" style="text-decoration:none;">返回主页继续筛选</a>
 {% endblock %}

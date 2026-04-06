@@ -1,21 +1,21 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2>答题页面</h2>
+<h2>在线做题：{{ topic_name }}</h2>
+<p class="muted">题目来自 Open Trivia DB，入口和筛选使用主页的学习界面。</p>
 
 <form method="post" action="{{ url_for('main.trivia_submit') }}">
     {% for q in questions %}
-    {% set q_index = loop.index0 %}
-    <div style="margin-bottom: 24px; padding: 16px; background: white; color: black; border: 1px solid #ccc;">
-        <p><strong>第 {{ loop.index }} 题：</strong>{{ q.question }}</p>
-
-        {% for choice in q.choices %}
-        <label style="display:block; margin:8px 0;">
-            <input type="radio" name="q{{ q_index }}" value="{{ choice }}" required>
-            {{ choice }}
-        </label>
-        {% endfor %}
-    </div>
+        {% set q_index = loop.index0 %}
+        <div class="card" style="margin-bottom: 18px;">
+            <p><strong>第 {{ loop.index }} 题：</strong>{{ q.question }}</p>
+            {% for choice in q.choices %}
+                <label style="display:block; margin:8px 0;">
+                    <input type="radio" name="q{{ q_index }}" value="{{ choice }}" required>
+                    {{ choice }}
+                </label>
+            {% endfor %}
+        </div>
     {% endfor %}
 
     <button type="submit">提交答案</button>
